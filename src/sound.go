@@ -1,5 +1,13 @@
 package main
 
+/*
+#cgo LDFLAGS: -lxmp
+#include <xmp.h>
+#include <stdlib.h>
+#include <string.h>
+*/
+import "C"
+
 import (
 	"bytes"
 	"context"
@@ -9,6 +17,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
@@ -28,6 +37,81 @@ const (
 	audioResampleQuality = 1
 	audioSoundFont       = "sound/soundfont.sf2" // default path for MIDI soundfont
 )
+
+// ------------------------------------------------------------------
+// xmStreamer wraps libxmp context for streaming
+
+type xmStreamer struct {
+	ctx        C.xmp_context
+	channels   int
+	sampleRate int
+	buffer     []int16
+}
+
+func (x *xmStreamer) Stream(samples [][2]float64) (int, bool) {
+	// Play one frame, get PCM from xmp
+	if C.xmp_play_frame(x.ctx) != 0 {
+		return 0, false
+	}
+	var info C.struct_xmp_frame_info
+	C.xmp_get_frame_info(x.ctx, &info)
+	if info.buffer_size == 0 {
+		return 0, false
+	}
+	// Convert PCM buffer to beep samples
+	nbuf := int(info.buffer_size) / 2 // int16 samples
+	if cap(x.buffer) < nbuf {
+		x.buffer = make([]int16, nbuf)
+	}
+	buf := x.buffer[:nbuf]
+	C.memcpy(unsafe.Pointer(&buf[0]), info.buffer, C.size_t(info.buffer_size))
+	for i := 0; i < len(samples) && i*2+1 < len(buf); i++ {
+		samples[i][0] = float64(buf[i*2]) / 32768.0
+		samples[i][1] = float64(buf[i*2+1]) / 32768.0
+	}
+	return len(samples), true
+}
+func (x *xmStreamer) Err() error { return nil }
+func (x *xmStreamer) Close() error {
+	if x.ctx != nil {
+		C.xmp_end_player(x.ctx)
+		C.xmp_release_module(x.ctx)
+		C.xmp_free_context(x.ctx)
+		x.ctx = nil
+	}
+	return nil
+}
+func (x *xmStreamer) Position() int { return 0 } // Not implemented
+func (x *xmStreamer) Seek(int) error { return nil }
+func (x *xmStreamer) Len() int       { return 0 }
+
+func xmpDecode(f io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
+	data, _ := io.ReadAll(f)
+	if len(data) == 0 {
+		return nil, beep.Format{}, Error("empty XM file")
+	}
+	ctx := C.xmp_create_context()
+	if ctx == nil {
+		return nil, beep.Format{}, Error("xmp_create_context failed")
+	}
+	cbuf := (*C.char)(unsafe.Pointer(&data[0]))
+	if C.xmp_load_module_from_memory(ctx, unsafe.Pointer(cbuf), C.long(len(data))) != 0 {
+		C.xmp_free_context(ctx)
+		return nil, beep.Format{}, Error("xmp_load_module_from_memory failed")
+	}
+	C.xmp_start_player(ctx, 44100, 0)
+	x := &xmStreamer{
+		ctx:        ctx,
+		channels:   2,
+		sampleRate: 44100,
+	}
+	format := beep.Format{
+		SampleRate:  beep.SampleRate(x.sampleRate),
+		NumChannels: x.channels,
+		Precision:   2,
+	}
+	return x, format, nil
+}
 
 // ------------------------------------------------------------------
 // Normalizer
@@ -351,6 +435,9 @@ func (bgm *Bgm) Open(filename string, loop, bgmVolume, bgmLoopStart, bgmLoopEnd,
 			bgm.streamer, format, err = midi.Decode(f, sf, beep.SampleRate(int(sys.cfg.Sound.SampleRate)))
 			bgm.format = "midi"
 		}
+	} else if HasExtension(bgm.filename, ".xm")  || HasExtension(bgm.filename, ".mod")  || HasExtension(bgm.filename, ".it")  || HasExtension(bgm.filename, ".s3m") {
+		bgm.streamer, format, err = xmpDecode(f)
+		bgm.format = "xmp"
 	} else {
 		err = Error(fmt.Sprintf("unsupported file extension: %v", bgm.filename))
 	}
@@ -453,6 +540,8 @@ func (bgm *Bgm) Open(filename string, loop, bgmVolume, bgmLoopStart, bgmLoopEnd,
 					return
 				}
 				dec, _, err = midi.Decode(lf, sf, bgm.sampleRate)
+			case "xmp":
+				dec, _, err = xmpDecode(lf)
 			}
 			if err != nil {
 				sys.errLog.Println(err)
