@@ -24,6 +24,9 @@ srcFiles=src/anim.go \
 	src/util_desktop.go \
 	src/util_js.go
 
+win: ${srcFiles}
+	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=windows GOARCH=amd64 go build -trimpath -v -trimpath -ldflags "-s -w -H windowsgui" -o ./bin/ikemen_win ./src
+
 # Windows 64-bit target
 Ikemen_GO.exe: ${srcFiles}
 	cd ./build && bash ./build.sh Win64
