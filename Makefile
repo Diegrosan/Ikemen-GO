@@ -24,7 +24,7 @@ srcFiles=src/anim.go \
 	src/util_desktop.go \
 	src/util_js.go
 
-win: ${srcFiles}
+win: ${srcFiles} src/assets.zip
 	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=windows GOARCH=amd64 go build -trimpath -v -trimpath -ldflags "-s -w -H windowsgui" -o ./bin/ikemen_win ./src
 
 # Windows 64-bit target
@@ -90,3 +90,8 @@ appbundle_docker:
 
 clean_appbundle:
 	rm -rf I.K.E.M.E.N-Go.app
+
+src/assets.zip: data/* external/* font/*
+	rm src/assets.zip || true
+	echo $(BUILD_DATE) > external/script/version
+	zip -r src/assets.zip data external font
