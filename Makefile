@@ -27,6 +27,9 @@ srcFiles=src/anim.go \
 win: ${srcFiles} src/assets.zip
 	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=windows GOARCH=amd64 go build -trimpath -v -trimpath -ldflags "-s -w -H windowsgui" -o ./bin/ikemen_win ./src
 
+linux: ${srcFiles} src/assets.zip src/screenpack.zip
+	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=linux go build -trimpath -v -trimpath -ldflags "-s -w" -o ./bin/ikemen_linux ./src
+
 # Windows 64-bit target
 Ikemen_GO.exe: ${srcFiles}
 	cd ./build && bash ./build.sh Win64
@@ -95,3 +98,6 @@ src/assets.zip: data/* external/* font/*
 	rm src/assets.zip || true
 	echo $(BUILD_DATE) > external/script/version
 	zip -r src/assets.zip data external font
+
+src/screenpack.zip:
+	wget -P src https://github.com/leonkasovan/Ikemen-GO/releases/download/v1.0/screenpack.zip
