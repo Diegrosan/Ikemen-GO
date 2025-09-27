@@ -16,6 +16,10 @@ type Window struct {
 	x, y, w, h int
 }
 
+func (s *System) GetTime() float64 {
+	return glfw.GetTime()
+}
+
 func (s *System) newWindow(w, h int) (*Window, error) {
 	var err error
 	var window *glfw.Window
@@ -48,6 +52,16 @@ func (s *System) newWindow(w, h int) (*Window, error) {
 		glfw.WindowHint(glfw.ContextVersionMinor, 2)
 		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
+	} else if s.cfg.Video.RenderMode == "OpenGL ES 3.1" {
+		glfw.WindowHint(glfw.ClientAPI, glfw.OpenGLESAPI)
+		glfw.WindowHint(glfw.ContextVersionMajor, 3)
+		glfw.WindowHint(glfw.ContextVersionMinor, 1)
+		glfw.WindowHint(glfw.ContextCreationAPI, glfw.EGLContextAPI)
+	} else if s.cfg.Video.RenderMode == "OpenGL ES 3.2" {
+		glfw.WindowHint(glfw.ClientAPI, glfw.OpenGLESAPI)
+		glfw.WindowHint(glfw.ContextVersionMajor, 3)
+		glfw.WindowHint(glfw.ContextVersionMinor, 2)
+		glfw.WindowHint(glfw.ContextCreationAPI, glfw.EGLContextAPI)
 	} else {
 		glfw.WindowHint(glfw.ContextVersionMajor, 2)
 		glfw.WindowHint(glfw.ContextVersionMinor, 1)

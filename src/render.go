@@ -5,7 +5,7 @@ import (
 	"math"
 
 	mgl "github.com/go-gl/mathgl/mgl32"
-	"github.com/ikemen-engine/glfont"
+	"github.com/ikemen-engine/Ikemen-GO/packages/glfont"
 )
 
 type Texture interface {
@@ -88,6 +88,9 @@ var modelVertShader string
 
 //go:embed shaders/model.frag.glsl
 var modelFragShader string
+
+//go:embed shaders/model.frag.es.glsl
+var modelFragShaderES string
 
 //go:embed shaders/shadow.vert.glsl
 var shadowVertShader string

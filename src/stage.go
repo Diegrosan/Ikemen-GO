@@ -4074,7 +4074,7 @@ func (model *Model) draw(bufferIndex uint32, sceneNumber int, layerNumber int, d
 			}
 			gfx.SetShadowMapUniformF("farPlane["+strconv.Itoa(i)+"]", shadowMapFar)
 			gfx.SetShadowMapUniformF("lightPos["+strconv.Itoa(i)+"]", lightNode.worldTransform[12], lightNode.worldTransform[13], lightNode.worldTransform[14])
-			if gfx.GetName() == "OpenGL 2.1" {
+			if gfx.GetName() == "OpenGL 2.1" || gfx.GetName() == "OpenGL ES 3.1" {
 				if light.lightType == PointLight {
 					gfx.SetShadowFrameCubeTexture(uint32(i))
 				} else {
@@ -4096,7 +4096,7 @@ func (model *Model) draw(bufferIndex uint32, sceneNumber int, layerNumber int, d
 				}
 			}
 		}
-		if gfx.GetName() == "OpenGL 3.2" {
+		if gfx.GetName() == "OpenGL 3.2"  || gfx.GetName() == "OpenGL ES 3.2" {
 			for _, index := range scene.nodes {
 				drawNodeShadow(model, scene, model.nodes[index], offset, false, 0, numLights, lightMatrices[:], lightTypes[:])
 			}
