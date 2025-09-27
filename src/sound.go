@@ -1,7 +1,8 @@
 package main
 
 /*
-#cgo LDFLAGS: -lxmp
+#cgo CFLAGS: -DLIBXMP_STATIC
+#cgo LDFLAGS: -static -lxmp
 #include <xmp.h>
 #include <stdlib.h>
 #include <string.h>

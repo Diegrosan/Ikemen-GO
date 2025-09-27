@@ -1,9 +1,14 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -14,6 +19,12 @@ import (
 
 var Version = "development"
 var BuildTime = "" // Set automatically by GitHub Actions
+
+//go:embed assets.zip
+var assetsZip []byte
+
+//go:embed screenpack.zip
+var screenpackZip []byte
 
 func init() {
 	runtime.LockOSThread()
@@ -50,6 +61,55 @@ func closeLog(f *os.File) {
 	f.Close()
 }
 
+// extractEmbed extracts all files from the embedded ZIP content into current dir.
+func extractEmbed(content []byte) error {
+	// Open the embedded zip file from the byte slice
+	zipReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return err
+	}
+
+	// Iterate over the files in the zip archive
+	for _, file := range zipReader.File {
+		// fmt.Printf("Extracting: %s\n", file.Name)
+
+		// Open the file inside the zip archive
+		fileReader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		defer fileReader.Close()
+
+		// Handle directories by creating them first
+		if file.FileInfo().IsDir() {
+			err := os.MkdirAll(file.Name, os.ModePerm)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Ensure the directory exists before creating the file
+		if err := os.MkdirAll(filepath.Dir(file.Name), os.ModePerm); err != nil {
+			return err
+		}
+
+		// Create the destination file on disk
+		outFile, err := os.Create(file.Name)
+		if err != nil {
+			return fmt.Errorf("cannot write %s: %v", file.Name, err)
+		}
+		defer outFile.Close()
+
+		// Copy the file contents to the destination file
+		_, err = io.Copy(outFile, fileReader)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func main() {
 
 	exePath, err := os.Executable()
@@ -69,6 +129,30 @@ func main() {
 	os.Mkdir("save/logs", os.ModeSticky|0755)
 
 	processCommandLine()
+	if _, ok := sys.cmdFlags["-installrun"]; ok {
+		fmt.Printf("[main.go] Install default screenpack\n")
+		err := extractEmbed(screenpackZip)
+		if err != nil {
+			fmt.Printf("[main.go] Error extracting screenpack: %v\n", err)
+		}
+		err = extractEmbed(assetsZip)
+		if err != nil {
+			fmt.Printf("[main.go] Error extracting asset: %v\n", err)
+		}
+	}
+
+	if _, ok := sys.cmdFlags["-install"]; ok {
+		fmt.Printf("[main.go] Install default screenpack\n")
+		err := extractEmbed(screenpackZip)
+		if err != nil {
+			fmt.Printf("[main.go] Error extracting screenpack: %v\n", err)
+		}
+		err = extractEmbed(assetsZip)
+		if err != nil {
+			fmt.Printf("[main.go] Error extracting asset: %v\n", err)
+		}
+		os.Exit(0)
+	}
 
 	// Try reading stats
 	if _, err := os.ReadFile("save/stats.json"); err != nil {
