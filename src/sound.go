@@ -5,6 +5,7 @@ package main
 #include <xmp.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 */
 import "C"
 
@@ -18,6 +19,7 @@ import (
 	"os"
 	"sync"
 	"unsafe"
+	"runtime"
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
@@ -32,7 +34,7 @@ import (
 
 const (
 	audioOutLen          = 2048
-	audioFrequency       = 48000
+	audioFrequency       = 44100
 	audioPrecision       = 4
 	audioResampleQuality = 1
 	audioSoundFont       = "sound/soundfont.sf2" // default path for MIDI soundfont
@@ -40,77 +42,146 @@ const (
 
 // ------------------------------------------------------------------
 // xmStreamer wraps libxmp context for streaming
-
 type xmStreamer struct {
 	ctx        C.xmp_context
 	channels   int
 	sampleRate int
 	buffer     []int16
+	closed     bool
+	err        error
+
+	// runtime tracking
+	posFrames   int   // frames already produced (a frame == one sample per channel)
+	totalFrames int   // estimated total frames (from total_time)
 }
 
+// Stream fills the provided buffer with audio frames (Optimized version).
 func (x *xmStreamer) Stream(samples [][2]float64) (int, bool) {
-	// Play one frame, get PCM from xmp
-	if C.xmp_play_frame(x.ctx) != 0 {
+	if x.closed || x.err != nil {
 		return 0, false
 	}
-	var info C.struct_xmp_frame_info
-	C.xmp_get_frame_info(x.ctx, &info)
-	if info.buffer_size == 0 {
+
+	frameCount := len(samples)
+	if frameCount*2 > len(x.buffer) {
+		frameCount = len(x.buffer) / 2
+	}
+
+	res := C.xmp_play_buffer(x.ctx, unsafe.Pointer(&x.buffer[0]), C.int(frameCount*2*2), 0)
+	if res < 0 {
+		x.err = Error("xmp playback ended or failed")
 		return 0, false
 	}
-	// Convert PCM buffer to beep samples
-	nbuf := int(info.buffer_size) / 2 // int16 samples
-	if cap(x.buffer) < nbuf {
-		x.buffer = make([]int16, nbuf)
+
+	buf := x.buffer
+	const scale = 1.0 / 32768.0
+	for i := 0; i < frameCount; i++ {
+		j := i * 2
+		samples[i][0] = float64(buf[j]) * scale
+		samples[i][1] = float64(buf[j+1]) * scale
 	}
-	buf := x.buffer[:nbuf]
-	C.memcpy(unsafe.Pointer(&buf[0]), info.buffer, C.size_t(info.buffer_size))
-	for i := 0; i < len(samples) && i*2+1 < len(buf); i++ {
-		samples[i][0] = float64(buf[i*2]) / 32768.0
-		samples[i][1] = float64(buf[i*2+1]) / 32768.0
-	}
-	return len(samples), true
+	return frameCount, true
 }
-func (x *xmStreamer) Err() error { return nil }
+
+
+// Err returns the last error that occurred.
+func (x *xmStreamer) Err() error { return x.err }
+
+// Close releases all libxmp resources.
 func (x *xmStreamer) Close() error {
-	if x.ctx != nil {
-		C.xmp_end_player(x.ctx)
-		C.xmp_release_module(x.ctx)
-		C.xmp_free_context(x.ctx)
-		x.ctx = nil
+	if x.closed {
+		return nil
 	}
+	x.closed = true
+	C.xmp_end_player(x.ctx)
+	C.xmp_release_module(x.ctx)
+	C.xmp_free_context(x.ctx)
 	return nil
 }
-func (x *xmStreamer) Position() int { return 0 } // Not implemented
-func (x *xmStreamer) Seek(int) error { return nil }
-func (x *xmStreamer) Len() int       { return 0 }
 
-func xmpDecode(f io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
-	data, _ := io.ReadAll(f)
-	if len(data) == 0 {
-		return nil, beep.Format{}, Error("empty XM file")
-	}
+func (x *xmStreamer) Position() int {
+	return 0
+}
+
+// Seek attempts to position to absolute frame p.
+// Beep's Seek uses sample-frame positions (frames == sample pairs).
+func (x *xmStreamer) Seek(p int) error {
+	return nil
+}
+
+func (x *xmStreamer) Len() int {
+	return x.totalFrames
+}
+
+// newXMStreamer initializes a libxmp context for a given XM file.
+func newXMStreamer(f *os.File) (*xmStreamer, error) {
 	ctx := C.xmp_create_context()
 	if ctx == nil {
-		return nil, beep.Format{}, Error("xmp_create_context failed")
+		return nil, Error("failed to create xmp context")
 	}
-	cbuf := (*C.char)(unsafe.Pointer(&data[0]))
-	if C.xmp_load_module_from_memory(ctx, unsafe.Pointer(cbuf), C.long(len(data))) != 0 {
+
+	// Use libxmp’s native loader instead of in-memory parsing.
+	cpath := C.CString(f.Name())
+	defer C.free(unsafe.Pointer(cpath))
+
+	if C.xmp_load_module(ctx, cpath) != 0 {
 		C.xmp_free_context(ctx)
-		return nil, beep.Format{}, Error("xmp_load_module_from_memory failed")
+		return nil, Error("failed to load XM module")
 	}
-	C.xmp_start_player(ctx, 44100, 0)
-	x := &xmStreamer{
+
+	// Convert Go file to C FILE*
+    // mode := C.CString("rb")
+    // defer C.free(unsafe.Pointer(mode))
+    // cFileStream := C.fdopen(C.int(f.Fd()), mode)
+    // if cFileStream == nil {
+    //     C.xmp_free_context(ctx)
+    //     return nil, Error("fdopen failed")
+    // }
+
+	// if C.xmp_load_module_from_file(ctx, unsafe.Pointer(cFileStream), 0) != 0 {
+	// 	C.xmp_free_context(ctx)
+	// 	return nil, Error("failed to load XM module")
+	// }
+
+	if C.xmp_start_player(ctx, audioFrequency, 0) != 0 {
+		C.xmp_release_module(ctx)
+		C.xmp_free_context(ctx)
+		return nil, Error("failed to start XM player")
+	}
+
+	var info C.struct_xmp_frame_info
+	C.xmp_get_frame_info(ctx, &info)
+	fmt.Println("Filename:", f.Name())
+	fmt.Println("Total time (ms):", info.total_time)
+	fmt.Println("Initial speed:", info.speed, "BPM:", info.bpm)
+	fmt.Println("Buffer size:", info.buffer_size)
+
+	s := &xmStreamer{
 		ctx:        ctx,
 		channels:   2,
-		sampleRate: 44100,
+		sampleRate: audioFrequency,
+		totalFrames: int(float64(info.total_time) * float64(audioFrequency) / 1000.0), 
+		buffer:     make([]int16, audioOutLen*2), // 2048 stereo frames → lower memory
+	}
+	runtime.SetFinalizer(s, func(s *xmStreamer) { s.Close() })
+	return s, nil
+}
+
+func xmpDecode(f io.ReadSeekCloser) (beep.StreamSeekCloser, beep.Format, error) {
+	file, ok := f.(*os.File)
+	if !ok {
+		return nil, beep.Format{}, fmt.Errorf("xmpDecode: expected *os.File, got %T", f)
+	}
+	fmt.Println("xmpDecode Filename:", file.Name())
+	streamer, err := newXMStreamer(file)
+	if err != nil {
+		return nil, beep.Format{}, err
 	}
 	format := beep.Format{
-		SampleRate:  beep.SampleRate(x.sampleRate),
-		NumChannels: x.channels,
+		SampleRate:  audioFrequency,
+		NumChannels: 2,
 		Precision:   2,
 	}
-	return x, format, nil
+	return streamer, format, nil
 }
 
 // ------------------------------------------------------------------
@@ -483,7 +554,7 @@ func (bgm *Bgm) Open(filename string, loop, bgmVolume, bgmLoopStart, bgmLoopEnd,
 	speaker.Play(bgm.ctrl)
 
 	// Handle the RAM swap in the background (only for looped BGM and only if the user enabled it)
-	if lc != 0 && sys.cfg.Sound.BGMRAMBuffer {
+	if lc != 0 && sys.cfg.Sound.BGMRAMBuffer && bgm.format != "xmp" {
 		go func(ctx context.Context) {
 			// Call the cancel function when the goroutine exits
 			// to ensure cleanup.
@@ -540,8 +611,8 @@ func (bgm *Bgm) Open(filename string, loop, bgmVolume, bgmLoopStart, bgmLoopEnd,
 					return
 				}
 				dec, _, err = midi.Decode(lf, sf, bgm.sampleRate)
-			case "xmp":
-				dec, _, err = xmpDecode(lf)
+			// case "xmp":
+			// 	dec, _, err = xmpDecode(lf)
 			}
 			if err != nil {
 				sys.errLog.Println(err)
