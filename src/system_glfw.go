@@ -1,5 +1,3 @@
-//go:build !kinc
-
 package main
 
 import (
@@ -47,25 +45,7 @@ func (s *System) newWindow(w, h int) (*Window, error) {
 	glfw.WindowHint(glfw.Resizable, glfw.True)
 
 	// only GL 3.2 needs this
-	if sys.cfg.Video.RenderMode == "OpenGL 3.2" {
-		glfw.WindowHint(glfw.ContextVersionMajor, 3)
-		glfw.WindowHint(glfw.ContextVersionMinor, 2)
-		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	} else if s.cfg.Video.RenderMode == "OpenGL ES 3.1" {
-		glfw.WindowHint(glfw.ClientAPI, glfw.OpenGLESAPI)
-		glfw.WindowHint(glfw.ContextVersionMajor, 3)
-		glfw.WindowHint(glfw.ContextVersionMinor, 1)
-		glfw.WindowHint(glfw.ContextCreationAPI, glfw.EGLContextAPI)
-	} else if s.cfg.Video.RenderMode == "OpenGL ES 3.2" {
-		glfw.WindowHint(glfw.ClientAPI, glfw.OpenGLESAPI)
-		glfw.WindowHint(glfw.ContextVersionMajor, 3)
-		glfw.WindowHint(glfw.ContextVersionMinor, 2)
-		glfw.WindowHint(glfw.ContextCreationAPI, glfw.EGLContextAPI)
-	} else {
-		glfw.WindowHint(glfw.ContextVersionMajor, 2)
-		glfw.WindowHint(glfw.ContextVersionMinor, 1)
-	}
+	s.initWindowHint()
 
 	// Create main window.
 	// NOTE: Borderless fullscreen is in reality just a window without borders.

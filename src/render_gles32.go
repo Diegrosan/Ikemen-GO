@@ -1,3 +1,4 @@
+//go:build linux
 // This is almost identical to render_gles.go except it uses a VAO
 // for GLES 3.2 which is the minimum version that runs on modern
 // macOS (Intel and ARM). Work adapted from assemblaj/fantasma
