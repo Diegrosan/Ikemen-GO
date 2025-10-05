@@ -1,5 +1,6 @@
 # Set Bash as the shell.
 SHELL=/bin/bash
+BUILD_DATE := $(shell date +%Y%m%d_%H%M%S)
 
 # /src files
 srcFiles=src/anim.go \
@@ -24,8 +25,8 @@ srcFiles=src/anim.go \
 	src/util_desktop.go \
 	src/util_js.go
 
-win: ${srcFiles} src/assets.zip
-	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=windows GOARCH=amd64 go build -trimpath -v -trimpath -ldflags "-s -w -H windowsgui" -o ./bin/ikemen_win ./src
+win: ${srcFiles} src/assets.zip src/screenpack.zip
+	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=windows GOARCH=amd64 go build -trimpath -v -trimpath -ldflags "-s -w -H windowsgui" -o ./bin/ikemen_win.exe ./src
 
 linux: ${srcFiles} src/assets.zip src/screenpack.zip
 	CGO_ENABLED=1 GOEXPERIMENT=arenas GOOS=linux go build -trimpath -v -trimpath -ldflags "-s -w" -o ./bin/ikemen_linux ./src
