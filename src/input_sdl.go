@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -193,23 +192,24 @@ func AddCommonMappings() {
 }
 
 func LoadGameControllerDB() {
-	execPath, err := os.Executable()
-	if err != nil {
-		fmt.Printf("[LoadGameControllerDB] Failed to get executable path: %v\n", err)
-		fmt.Printf("[LoadGameControllerDB] Using built-in mappings only\n")
-		return
-	}
+	envPath := os.Getenv("SDL_GAMECONTROLLERDB")
 	
-	execDir := filepath.Dir(execPath)
-	dbPath := filepath.Join(execDir, "external", "gamecontrollerdb.txt")
-	
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		fmt.Printf("[LoadGameControllerDB] File not found: %s\n", dbPath)
+	if envPath == "" {
+		fmt.Printf("[LoadGameControllerDB] SDL_GAMECONTROLLERDB environment variable not set\n")
 		fmt.Printf("[LoadGameControllerDB] Using built-in mappings as fallback\n")
 		return
 	}
 	
-	data, err := os.ReadFile(dbPath)
+	fmt.Printf("[LoadGameControllerDB] Searching for gamecontrollerdb.txt in:\n")
+	fmt.Printf("[LoadGameControllerDB]   - %s (SDL_GAMECONTROLLERDB env variable)\n", envPath)
+	
+	if _, err := os.Stat(envPath); err != nil {
+		fmt.Printf("[LoadGameControllerDB] File not found: %s\n", envPath)
+		fmt.Printf("[LoadGameControllerDB] Using built-in mappings as fallback\n")
+		return
+	}
+	
+	data, err := os.ReadFile(envPath)
 	if err != nil {
 		fmt.Printf("[LoadGameControllerDB] Failed to read file: %v\n", err)
 		fmt.Printf("[LoadGameControllerDB] Using built-in mappings as fallback\n")
@@ -228,7 +228,7 @@ func LoadGameControllerDB() {
 		}
 	}
 	
-	fmt.Printf("[LoadGameControllerDB] Loaded %d mappings from: %s\n", count, dbPath)
+	fmt.Printf("[LoadGameControllerDB] Loaded %d mappings from: %s\n", count, envPath)
 	fmt.Printf("[LoadGameControllerDB] External database has PRIORITY over built-in mappings\n")
 }
 
