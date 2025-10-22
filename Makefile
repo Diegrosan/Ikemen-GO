@@ -122,10 +122,9 @@ drm: ${srcFiles} src/assets.zip
 	export CGO_ENABLED=1 && go build -tags="kmsdrm,gles2" -trimpath -ldflags="-s -w" -v -o ./bin/ikemen_drm ./src
 #	cp ./bin/ikemen_drm /home/deck/Projects/PortMaster/hyperdbz/HyperDBZIndigo/Hyper\ DBZ\ 5.0d
 
-# Generic Linux that supports X11 and Wayland
+# Generic Linux that support SDL2
 linux: ${srcFiles} src/assets.zip
-#	export CGO_ENABLED=1 && go build -tags="kmsdrm,sdl2,x11,wayland,gles2,debug" -trimpath -ldflags="-s -w" -v -o ./bin/ikemen_linux ./src
-	export CGO_ENABLED=1 && go build -a -x -tags="wayland,sdl2,gles2,debug" -trimpath -ldflags="-s -w -X 'main.BuildTime=$(BUILD_DATE)'" -v -o ./bin/ikemen_linux ./src > build.log 2>&1 || (echo "Build failed. See build.log for details." && exit 1)
+	export CGO_ENABLED=1 && go build -tags="sdl2,gles2,debug" -trimpath -v -ldflags="-s -w" -o ./bin/ikemen_linux ./src
 
 src/assets.zip: data/* external/* font/*
 	rm src/assets.zip || true
